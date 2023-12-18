@@ -16,7 +16,16 @@ Reference implementation for papers
 [C. Hold, V. Pulkki, A. Politis and L. McCormack, "Compression of Higher-Order Ambisonic Signals Using Directional Audio Coding," in IEEE/ACM Transactions on Audio, Speech, and Language Processing, vol. 32, 2024.]
 
 
+## Quickstart
 HOAC uses [spaudiopy](https://github.com/chris-hld/spaudiopy) and [safpy](https://github.com/chris-hld/SAFpy).
+Make sure to install these packages and its dependencies.
+
+For example, using conda
+```
+conda create --name hoac python=3.11 anaconda portaudio cffi
+```
+Then download and install [spaudiopy](https://github.com/chris-hld/spaudiopy) and [safpy](https://github.com/chris-hld/SAFpy).
+For the latter you need to follow the build instructions in its README.
 
 WIP
 
