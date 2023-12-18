@@ -16,5 +16,7 @@ Reference implementation for papers
 [C. Hold, V. Pulkki, A. Politis and L. McCormack, "Compression of Higher-Order Ambisonic Signals Using Directional Audio Coding," in IEEE/ACM Transactions on Audio, Speech, and Language Processing, vol. 32, 2024.]
 
 
+HOAC uses [spaudiopy](https://github.com/chris-hld/spaudiopy) and [safpy](https://github.com/chris-hld/SAFpy).
+
 WIP
 
