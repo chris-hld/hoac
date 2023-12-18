@@ -22,7 +22,7 @@ Make sure to install these packages and its dependencies.
 
 For example, using conda
 ```
-conda create --name hoac python=3.11 anaconda portaudio cffi
+conda create --name hoac python=3.11 numpy scipy matplotlib portaudio cffi
 ```
 Then download and install [spaudiopy](https://github.com/chris-hld/spaudiopy) and [safpy](https://github.com/chris-hld/SAFpy).
 For the latter you need to follow the build instructions in its README.
