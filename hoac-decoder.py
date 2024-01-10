@@ -5,14 +5,13 @@ Created on Fri Jul 14 15:07:27 2023
 
 @author: Chris Hold
 """
-
+import time
 import numpy as np
 import matplotlib.pyplot as plt
-import time
-
 
 import spaudiopy as spa
 import safpy
+
 import hoac
 
 
@@ -23,7 +22,14 @@ PLOT = False
 PLAY = False
 
 
-conf, sig_tc, doa_idx_stream, dif_idx_stream = hoac.read_hoac()
+# Read
+conf, sig_tc, doa_idx_stream, dif_idx_stream = hoac.read_hoac(
+    libpath="~/git/opus-tools/")
+
+
+# Prepare
+N_sph_out = conf['N_sph_in']
+num_sh_out = (N_sph_out+1)**2
 
 x_tc = np.sqrt(4*np.pi)*sig_tc.get_signals()
 fs = sig_tc.fs
@@ -32,9 +38,6 @@ num_ch = x_tc.shape[0]
 blocksize = conf['blocksize']
 hopsize = conf['hopsize']
 num_slots = conf['blocksize'] // conf['hopsize']
-
-N_sph_out = 5
-num_sh_out = (N_sph_out+1)**2
 
 hSTFT = safpy.afstft.AfSTFT(num_ch, num_sh_out, hopsize, fs)
 hSTFT.clear_buffers()
@@ -67,14 +70,12 @@ B_nm_exp = np.zeros((num_sh_out, 8, num_ch, num_bands))
 B_nm_exp[:B_nm.shape[0], :, :, :] = B_nm[:, np.newaxis, :, np.newaxis]
 N_sph_recov = int(np.sqrt(num_recov) - 1)
 
-y_sec = spa.sph.sh_matrix(N_sph_out, conf['tc_v'][0], conf['tc_v'][1])
-C_f_dif = np.ones((num_ch, num_sh_out, num_sh_out))
-C_f_dif = 4*np.pi * np.array([np.outer(y_sec[s, :], y_sec[s, :])
-                              for s in range(num_ch)])
+C_dif = hoac.get_cov_dif(N_sph_out, num_ch, conf)
 orne = num_sh_out / np.trace(A_nm.conj().T @ A_nm)
 
+# Initialize and start timer
+start_time = time.time()
 
-# Initialize
 doa = np.zeros((8, num_ch, num_bands, 3))
 doa_prev = np.zeros_like(doa)
 dif = np.zeros((8, num_ch, num_bands))
@@ -85,8 +86,6 @@ X_nm = np.zeros((8, num_sh_out, num_bands), dtype=np.complex_)
 M = np.zeros_like(Y)
 M_prev = np.zeros_like(M)
 g = np.ones((N_sph_out+1, num_bands))
-
-start_time = time.time()
 
 print(" HOAC decoding.")
 
@@ -112,7 +111,7 @@ while idx_blk < doa_idx_stream.shape[0]:
     ene_dir = (1-dif) * ene_s
     ene_dif = dif * ene_s
 
-    gp = hoac.post_gain(X_nm, Y, ene_dir, ene_dif, C_f_dif, orne, M_mavg)
+    gp = hoac.post_gain(X_nm, Y, ene_dir, ene_dif, C_dif, orne, M_mavg)
     gp[gp > 2.] = 2.
     gp[gp < .5] = .5
     g = 2/3 * gp + 1/3*g

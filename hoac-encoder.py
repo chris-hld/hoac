@@ -8,28 +8,20 @@ HOAC - Higher-Order Ambisonics Audio Compression
 @author: Chris Hold
 """
 from pathlib import Path
-import numpy as np
-import subprocess
-
 import time
+import subprocess
+import numpy as np
+import matplotlib.pyplot as plt
 
 import spaudiopy as spa
 import safpy
 
 import hoac
 
-
-import matplotlib.pyplot as plt
 plt.close('all')
 
 
-user_pars = {'bitrate': 48,
-             'numTC': 12,
-             'metaDecimate': 2,
-             'metaDecimateFreqLim': 0,
-             'metaDoaGridOrder': 38,
-             'metaDifBins': 8
-             }
+profile = 'med'  # 'low', 'med', 'high'
 
 PEAK_NORM = True
 PLOT = False
@@ -39,15 +31,21 @@ fs = 48000
 num_smpls = fs * 10
 N_sph_in = 5
 
-# file_name = 'Audio/Ambisonics/HOA-Mix/moving_pink_sn3d.wav'
-# file_name = 'Audio/Ambisonics/test_scenes/bruckner_multichannelSH5N3D.wav'
-# file_name = 'Audio/Ambisonics/test_scenes/BAND_shakers_bass_strings_drums.wav_ambi_o5_rev.wav'
+file_name = 'Audio/Ambisonics/test_scenes/bruckner_multichannelSH5N3D.wav'
 # file_name = 'Audio/Ambisonics/test_scenes/em64_testScene_o5_ACN_N3D.wav'
-file_name = 'Audio/Ambisonics/test_scenes/movingScene_o5_ACN_N3D.wav'
 
 in_path = Path('~/OneDrive - Aalto University') / Path(file_name)
 
 # defaults
+user_pars = {'bitrate': 48 if not profile == 'low' else 32,
+             'numTC': 6 if profile == 'low' else 9 if profile == 'med' else 12,
+             'metaDecimateFreqLim': 8 if profile == 'low' else
+                                    4 if profile == 'med' else 0,
+             'metaDecimate': 2,
+             'metaDoaGridOrder': 38,
+             'metaDifBins': 8
+             }
+
 hopsize = 128
 blocksize = 8*hopsize
 if user_pars['numTC'] == 6:
@@ -77,9 +75,9 @@ if PEAK_NORM:
     in_sig *= gain
     print(f"applied gain {gain}")
 
-x_nm = in_sig[:(N_sph_pars+1)**2, :]
 
 # Prepare
+x_nm = in_sig[:(N_sph_pars+1)**2, :]
 num_secs = len(sec_dirs[0])
 c_n = spa.sph.maxre_modal_weights(N_sph_tcs)
 [A_nm, B_nm] = spa.sph.design_sph_filterbank(N_sph_tcs, sec_dirs[0],
@@ -166,8 +164,10 @@ doa_idx_stream, dif_q_stream = hoac.downsample_meta(
     doa_idx_stream, dif_q_stream, user_pars)
 
 print('Parameterization: ', time.time()-start_time, 'seconds.')
+print(user_pars)
 
 pars_status = {
+    'N_sph_in': N_sph_in,
     'blocksize': blocksize,
     'hopsize': hopsize,
     'numTCs': num_secs,
@@ -184,7 +184,7 @@ pars_status = {
 
 Path('./audio').mkdir(parents=True, exist_ok=True)
 hoac.write_hoac(pars_status, np.array([doa_idx_stream, dif_q_stream]),
-                x_transport, user_pars, fs)
+                x_transport, user_pars, fs, libpath="~/git/opus-tools/")
 
 print('Writing output: ', time.time()-start_time, 'seconds.')
 subprocess.run(["du", "-sh", "transport-data/"])
