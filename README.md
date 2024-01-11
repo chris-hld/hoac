@@ -5,10 +5,11 @@ Parametric spatial audio codec based on Higher-Order Directional Audio Coding (H
 Companion page http://research.spa.aalto.fi/publications/papers/hoac/.
 
 The encoder extracts a set of transport audio channels and metadata.
-The decoder reconstructs low orders, and resynthesizes high orders.
+The decoder reconstructs low orders, and resynthesizes high orders from the input parameterization.
 
 The audio transport channel coding uses [Opus](https://github.com/xiph/opus) in discrete channel mode (implemented [here](https://github.com/xiph/opus-tools/pull/80)). It is also possible to use other audio-codecs.
-The codec is currently prototyped for 5th order HOA (and higher).
+
+The codec is currently prototyped for 5th order HOA (and higher), at a total bit rate of ~512 kbit/s for 'low', ~768 kbit/s for 'med', and ~1280kbit for 'high' profiles.
 
 Reference implementation for papers
 
