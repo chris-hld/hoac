@@ -32,4 +32,34 @@ HOAC calls `opusenc` and `opusdec`, which need to be build from https://github.c
 
 If all dependencies are met, an example [encoder](https://github.com/chris-hld/hoac/blob/main/hoac-encoder.py) and [decoder](https://github.com/chris-hld/hoac/blob/main/hoac-decoder.py) shows the basic functionality.
 
+## Details
+If you would like to explore beyond the provided interfaces please reach out!
+All function docstrings can be shown e.g. with
+```python
+In [1]: import hoac
 
+In [2]: hoac.grouped_sector_parameters??
+Signature:      hoac.grouped_sector_parameters(x_nm, A_wxyz_c, M_grouper, TRANSPOSE=False)
+Call signature: hoac.grouped_sector_parameters(*args, **kwargs)
+Type:           cython_function_or_method
+String form:    <cyfunction grouped_sector_parameters at 0x7f9d83048fb0>
+Docstring:     
+Sector S parameters from SH signals L, frequency K band G grouped.
+
+Parameters
+----------
+x_nm : np.ndarray
+    L x K.
+A_wxyz_c : np.ndarray, complex
+    4*S x L.
+M_grouper : np.ndarray
+    K x G.
+TRANSPOSE : np.ndarray, optional
+    The default is False.
+
+Returns
+-------
+azi_s, zen_s, dif_s, ene_s, int_s : np.ndarray
+    S x G, or 3*S x G, or transposed
+
+```
