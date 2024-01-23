@@ -30,7 +30,7 @@ For the latter you need to follow the build instructions in its README.
 
 HOAC calls `opusenc` and `opusdec`, which need to be build from https://github.com/xiph/opus-tools.
 
-If all dependencies are met, an example [encoder](https://github.com/chris-hld/hoac/blob/main/hoac-encoder.py) and [decoder](https://github.com/chris-hld/hoac/blob/main/hoac-decoder.py) shows the basic functionality.
+If all dependencies are met, an example [encoder](https://github.com/chris-hld/hoac/blob/main/hoac_encoder.py) and [decoder](https://github.com/chris-hld/hoac/blob/main/hoac_decoder.py) shows the basic functionality.
 
 ## Details
 If you would like to explore beyond the provided interfaces please reach out!
