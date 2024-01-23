@@ -15,8 +15,6 @@ import safpy
 import hoac
 
 
-#%reset -f
-
 SAVE = True
 PLOT = False
 PLAY = False
@@ -46,14 +44,7 @@ freqs = hSTFT.center_freqs
 f_qt = hoac.get_f_quantizer(num_bands)
 f_qt_c = np.asarray([np.mean(freqs[idx[0]: idx[1]]) for idx in f_qt])
 qgrid = conf['qgrid']
-
-qdifbins = conf['qdifbins']
-qdifbins = np.append(qdifbins, 1)
-
-M_mavg = np.zeros((N_sph_out+1, num_sh_out))
-for n in range(N_sph_out+1):
-    M_mavg[n, n**2:(n+1)**2] = 1/(2*n+1)
-num_m = np.asarray([2*n+1 for n in range(N_sph_out+1)])
+qdifbins = np.append(conf['qdifbins'], 1)
 
 x_tc = np.hstack((x_tc, np.zeros((num_ch, hSTFT.processing_delay))))
 out_sig = np.zeros((num_sh_out, x_tc.shape[1]))
@@ -72,6 +63,12 @@ N_sph_recov = int(np.sqrt(num_recov) - 1)
 
 C_dif = hoac.get_cov_dif(N_sph_out, num_ch, conf)
 orne = num_sh_out / np.trace(A_nm.conj().T @ A_nm)
+
+M_mavg = np.zeros((N_sph_out+1, num_sh_out))
+for n in range(N_sph_out+1):
+    M_mavg[n, n**2:(n+1)**2] = 1/(2*n+1)
+num_m = np.asarray([2*n+1 for n in range(N_sph_out+1)])
+
 
 # Initialize and start timer
 start_time = time.time()
@@ -166,9 +163,9 @@ if SAVE:
               (10e-10 + spa.utils.rms(uncompressed_sig, axis=-1))))), 3))
 
     if PLOT:
-        hoac.sh_bar([spa.utils.rms(out_sig) /
-                     (spa.utils.rms(uncompressed_sig+1e-10))], TODB=1,
-                    centered=True, s=800)
+        spa.plot.sh_bar([spa.utils.rms(out_sig) /
+                         (spa.utils.rms(uncompressed_sig+1e-10))], TODB=1,
+                        centered=True, s=800)
 
         spa.plot.sh_rms_map(out_sig+1e-10, TODB=True,
                             title="Output SHD Signal")

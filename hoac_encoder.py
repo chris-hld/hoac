@@ -18,15 +18,13 @@ import safpy
 
 import hoac
 
-plt.close('all')
-
 
 profile = 'med'  # 'low', 'med', 'high'
 
 PEAK_NORM = True
 PLOT = False
 
-# create signal
+# laod signal
 fs = 48000
 num_smpls = fs * 10
 N_sph_in = 5
@@ -36,8 +34,20 @@ file_name = 'Audio/Ambisonics/test_scenes/bruckner_multichannelSH5N3D.wav'
 
 in_path = Path('~/OneDrive - Aalto University') / Path(file_name)
 
+in_file = spa.io.load_audio(in_path, fs)
+assert in_file.fs == fs
+in_sig = in_file.get_signals()[:(N_sph_in+1)**2, :num_smpls]
+if 'sn3d' in str(in_path).lower():
+    in_sig = spa.sph.sn3d_to_n3d(in_sig)
+    print("Converted SN3D input")
+if PEAK_NORM:
+    gain = 0.3 / np.max(np.abs(in_sig))
+    in_sig *= gain
+    print(f"applied gain {gain:.2f}")
+
+
 # defaults
-user_pars = {'bitrate': 48 if not profile == 'low' else 32,
+user_pars = {'bitrate': 48 if profile != 'low' else 32,
              'numTC': 6 if profile == 'low' else 9 if profile == 'med' else 12,
              'metaDecimateFreqLim': 8 if profile == 'low' else
                                     4 if profile == 'med' else 0,
@@ -47,91 +57,67 @@ user_pars = {'bitrate': 48 if not profile == 'low' else 32,
              }
 
 hopsize = 128
-blocksize = 8*hopsize
+blocksize = 8 * hopsize
+
 if user_pars['numTC'] == 6:
     N_sph_tcs = 2
-    N_sph_pars = 3
     sec_dirs = spa.utils.cart2sph(*spa.grids.load_t_design((N_sph_tcs+1)).T)
     w = np.ones(len(sec_dirs[0]))
 if user_pars['numTC'] == 9:
     N_sph_tcs = 3
-    N_sph_pars = 4
     v, w = spa.grids.load_maxDet(N_sph_tcs-1)
     sec_dirs = spa.utils.cart2sph(*v.T)
 if user_pars['numTC'] == 12:
     N_sph_tcs = 3
-    N_sph_pars = 4
     sec_dirs = spa.utils.cart2sph(*spa.grids.load_t_design(N_sph_tcs+1).T)
     w = np.ones(len(sec_dirs[0]))
 
 
-in_file = spa.io.load_audio(in_path, fs)
-in_sig = in_file.get_signals()[:(N_sph_in+1)**2, :num_smpls]
-if 'sn3d' in str(in_path).lower():
-    in_sig = spa.sph.sn3d_to_n3d(in_sig)
-    print("Converted SN3D input")
-if PEAK_NORM:
-    gain = 0.3 / np.max(np.abs(in_sig))
-    in_sig *= gain
-    print(f"applied gain {gain}")
-
-
 # Prepare
-x_nm = in_sig[:(N_sph_pars+1)**2, :]
 num_secs = len(sec_dirs[0])
-c_n = spa.sph.maxre_modal_weights(N_sph_tcs)
-[A_nm, B_nm] = spa.sph.design_sph_filterbank(N_sph_tcs, sec_dirs[0],
-                                             sec_dirs[1], c_n, 'real',
-                                             'perfect')
-beta = spa.sph.sph_filterbank_reconstruction_factor(A_nm[0, :], num_secs,
-                                                    mode='amplitude')
-beta = beta * (w / w.sum() * len(w))
+[A_nm, B_nm] = spa.sph.design_sph_filterbank(
+    N_sph_tcs, sec_dirs[0], sec_dirs[1],
+    spa.sph.maxre_modal_weights(N_sph_tcs), 'real', 'perfect')
+beta = (w / w.sum() * len(w)) * spa.sph.sph_filterbank_reconstruction_factor(
+    A_nm[0, :], num_secs, mode='amplitude')
+N_sph_pars = N_sph_tcs + 1
 A_nm_pars = spa.parsa.sh_beamformer_from_pattern('max_re', N_sph_pars-1,
                                                  sec_dirs[0], sec_dirs[1])
 A_wxyz_c = np.array(spa.parsa.sh_sector_beamformer(A_nm_pars),
                     dtype=np.complex64)
 
 
+hSTFT = safpy.afstft.AfSTFT((N_sph_pars+1)**2, 0, hopsize, fs)
+hSTFT.clear_buffers()
 num_slots = blocksize // hopsize
 
-num_chin = (N_sph_pars+1)**2
-hSTFT = safpy.afstft.AfSTFT(num_chin, 0, hopsize, fs)
-hSTFT.clear_buffers()
-
-num_bands = hSTFT.num_bands
-f_qt = hoac.get_f_quantizer(num_bands)
+f_qt = hoac.get_f_quantizer(hSTFT.num_bands)
 num_fgroups = len(f_qt)
-M_grouper = hoac.get_f_grouper(f_qt, num_fgroups, num_bands)
-r_C = hoac.get_C_weighting(hSTFT.center_freqs)
-M_grouper = r_C[:, None] * M_grouper
+M_grouper = hoac.get_C_weighting(hSTFT.center_freqs)[:, None] * \
+    hoac.get_f_grouper(f_qt, num_fgroups, hSTFT.num_bands)
 M_grouper = M_grouper / np.sum(M_grouper, axis=0)
 
-# 38: 6.69, 48 : 5deg, 60, 66: 3.93 deg
 qgrid, num_coarse = hoac.get_quant_grid(user_pars['metaDoaGridOrder'], None)
-qdifbins = np.linspace(0, 0.99, user_pars['metaDifBins'], endpoint=False)**1.25
+qdifbins = np.linspace(0.01, 0.99, user_pars['metaDifBins'], False)**1.5
 
 Path('./transport-data').mkdir(parents=True, exist_ok=True)
+
 
 # Initialize and start timer
 start_time = time.time()
 
-x_nm_buf = np.hstack((x_nm, np.zeros((num_chin, hSTFT.processing_delay))))
-
-azi = np.zeros((num_slots, num_secs, num_bands))
-zen = np.zeros_like(azi)
-dif = np.zeros_like(azi)
-ene = np.zeros_like(azi)
+x_nm = in_sig[:(N_sph_pars+1)**2, :]
+x_nm_buf = np.hstack((x_nm, np.zeros((x_nm.shape[0], hSTFT.processing_delay))))
 
 azi_g = np.zeros((num_slots, num_secs, num_fgroups))
 zen_g = np.zeros_like(azi_g)
 dif_g = np.zeros_like(azi_g)
 ene_g = np.zeros_like(azi_g)
 
-
 num_blocks = x_nm_buf.shape[1] // blocksize
 doa_idx_stream = np.zeros((num_blocks, num_slots, num_secs, num_fgroups),
-                          dtype=np.int16)
-dif_q_stream = np.zeros_like(doa_idx_stream)
+                          dtype=np.uint16)
+dif_q_stream = np.zeros_like(doa_idx_stream, dtype=np.uint8)
 
 start_smpl = 0
 idx_blk = 0
