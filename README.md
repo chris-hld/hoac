@@ -21,12 +21,24 @@ Reference implementation for papers
 
 
 ## Quickstart
-For example, using conda
+Clone the repository
+```
+git clone https://github.com/chris-hld/hoac.git
+```
+It's a good idea to use conda for the python environment and package management
 ```
 conda create --name hoac python=3.11 numpy scipy matplotlib portaudio cffi
 ```
+To use the new environment
+```
+conda activate hoac
+```
 Then download and install [spaudiopy](https://github.com/chris-hld/spaudiopy) and [safpy](https://github.com/chris-hld/SAFpy).
-For the latter you need to follow the build instructions in its README.
+For spaudiopy, in the conda environment, you can use for example
+```
+pip install spaudiopy
+```
+For safpy latter you need to follow the build instructions in its [safpy-README](https://github.com/chris-hld/SAFpy).
 
 HOAC calls `opusenc` and `opusdec`, which need to be build from https://github.com/xiph/opus-tools.
 
