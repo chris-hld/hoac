@@ -40,7 +40,7 @@ pip install spaudiopy
 ```
 For safpy latter you need to follow the build instructions in its [safpy-README](https://github.com/chris-hld/SAFpy).
 
-HOAC calls `opusenc` and `opusdec`, which need to be build from https://github.com/xiph/opus-tools.
+HOAC calls `opusenc` and `opusdec`, which can be build from https://github.com/xiph/opus-tools.
 You should check support for the `opusenc --channels discrete` option.
 
 If all dependencies are met, an example [encoder](https://github.com/chris-hld/hoac/blob/main/hoac_encoder.py) and [decoder](https://github.com/chris-hld/hoac/blob/main/hoac_decoder.py) shows the basic functionality.
