@@ -24,9 +24,9 @@ profile = 'med'  # 'low', 'med', 'high'
 PEAK_NORM = True
 PLOT = False
 
-# laod signal
+# load signal
 fs = 48000
-num_smpls = fs * 10
+sig_len = 10  # in s
 N_sph_in = 5
 
 file_name = 'Audio/Ambisonics/test_scenes/bruckner_multichannelSH5N3D.wav'
@@ -36,7 +36,7 @@ in_path = Path('~/OneDrive - Aalto University') / Path(file_name)
 
 in_file = spa.io.load_audio(in_path, fs)
 assert in_file.fs == fs
-in_sig = in_file.get_signals()[:(N_sph_in+1)**2, :num_smpls]
+in_sig = in_file.get_signals()[:(N_sph_in+1)**2, :int(fs * sig_len)]
 if 'sn3d' in str(in_path).lower():
     in_sig = spa.sph.sn3d_to_n3d(in_sig)
     print("Converted SN3D input")
@@ -94,7 +94,7 @@ num_slots = blocksize // hopsize
 f_qt = hoac.get_f_quantizer(hSTFT.num_bands)
 num_fgroups = len(f_qt)
 M_grouper = hoac.get_C_weighting(hSTFT.center_freqs)[:, None] * \
-    hoac.get_f_grouper(f_qt, num_fgroups, hSTFT.num_bands)
+    hoac.get_f_grouper(f_qt)
 M_grouper = M_grouper / np.sum(M_grouper, axis=0)
 
 qgrid, num_coarse = hoac.get_quant_grid(user_pars['metaDoaGridOrder'], None)
@@ -133,14 +133,14 @@ while idx_blk < num_blocks:
     fd_sig_in = hSTFT.forward(blk_in)
 
     for idx_slt in range(num_slots):
-        azi_g[idx_slt, ::], zen_g[idx_slt, ::], \
-            dif_g[idx_slt, ::], \
-            ene_g[idx_slt, ::], _ = hoac.grouped_sector_parameters(
-                fd_sig_in[idx_slt, :, :], A_wxyz_c, M_grouper)
-
-    dif_q_stream[idx_blk, ::] = hoac.quantize_dif(dif_g, qdifbins)
-    doa_idx_stream[idx_blk, ::] = hoac.quantize_doa(azi_g, zen_g, qgrid,
-                                                    dif_g, None, None)
+        azi_g[idx_slt, ...], zen_g[idx_slt, ...], \
+            dif_g[idx_slt, ...], \
+            ene_g[idx_slt, ...], _ = hoac.grouped_sector_parameters(
+                fd_sig_in[idx_slt, ...], A_wxyz_c, M_grouper)
+    azi_g, zen_g, dif_g, ene_g = hoac.post_pars(azi_g, zen_g, dif_g, ene_g)
+    dif_q_stream[idx_blk, ...] = hoac.quantize_dif(dif_g, qdifbins)
+    doa_idx_stream[idx_blk, ...] = hoac.quantize_doa(azi_g, zen_g, qgrid,
+                                                     dif_g, None, None)
 
     start_smpl += blocksize
     idx_blk += 1
@@ -173,10 +173,11 @@ hoac.write_hoac(pars_status, np.array([doa_idx_stream, dif_q_stream]),
                 x_transport, user_pars, fs, libpath="~/git/opus-tools/")
 
 print('Writing output: ', time.time()-start_time, 'seconds.')
-subprocess.run(["du", "-sh", "transport-data/"])
+subprocess.run(["du", "-sh", "transport-data/"], check=True)
 
 spa.io.save_audio(spa.sph.n3d_to_sn3d(in_sig).T, './audio/in_sig_ambix.wav',
                   fs)
+
 
 if PLOT:
     spa.plot.sh_rms_map(in_sig, TODB=True, title="Input SHD Signal")
