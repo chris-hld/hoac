@@ -40,9 +40,10 @@ pip install spaudiopy
 ```
 For safpy you need to follow the build instructions in its [safpy-README](https://github.com/chris-hld/SAFpy).
 
-HOAC calls `opusenc` and `opusdec`, which can be built from https://github.com/xiph/opus-tools.
-You should check support for the `opusenc --channels discrete` option.
-Tested against these forks/branches: https://github.com/chris-hld/opus/tree/update_ambi_map3, https://github.com/chris-hld/opusfile/tree/channel-mapping-2-and-3, https://github.com/chris-hld/opus-tools/tree/channels-individual
+Opus can be installed from source [here](https://github.com/xiph/opus), and HOAC uses by default this Python binding [opuslib](https://github.com/chris-hld/opuslib) which can be installed for example with
+```
+ pip install git+https://github.com/chris-hld/opuslib.git@master
+```
 
 If all dependencies are met, an example [encoder](https://github.com/chris-hld/hoac/blob/main/hoac_encoder.py) and [decoder](https://github.com/chris-hld/hoac/blob/main/hoac_decoder.py) shows the basic functionality.
 
@@ -77,3 +78,7 @@ azi_s, zen_s, dif_s, ene_s, int_s : np.ndarray
     S x G, or 3*S x G, or transposed
 
 ```
+
+
+Tested against these forks/branches: https://github.com/chris-hld/opus/tree/update_ambi_map3, https://github.com/chris-hld/opusfile/tree/channel-mapping-2-and-3, https://github.com/chris-hld/opus-tools/tree/channels-individual
+
