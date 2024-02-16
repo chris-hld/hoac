@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jul  7 14:31:31 2023
-
-HOAC - Higher-Order Ambisonics Audio Compression
+HOAC - Higher-Order Ambisonics Audio Compression - Encoder
 
 @author: Chris Hold
 """
 from pathlib import Path
 import time
-import subprocess
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -33,6 +30,9 @@ file_name = 'Audio/Ambisonics/test_scenes/bruckner_multichannelSH5N3D.wav'
 # file_name = 'Audio/Ambisonics/test_scenes/em64_testScene_o5_ACN_N3D.wav'
 
 in_path = Path('~/OneDrive - Aalto University') / Path(file_name)
+
+hoac_file = Path("./out_file.hoac")
+
 
 in_file = spa.io.load_audio(in_path, fs)
 assert in_file.fs == fs
@@ -100,8 +100,6 @@ M_grouper = M_grouper / np.sum(M_grouper, axis=0)
 qgrid, num_coarse = hoac.get_quant_grid(user_pars['metaDoaGridOrder'], None)
 qdifbins = np.linspace(0.01, 0.99, user_pars['metaDifBins'], False)**1.5
 
-Path('./transport-data').mkdir(parents=True, exist_ok=True)
-
 
 # Initialize and start timer
 start_time = time.time()
@@ -155,6 +153,7 @@ print(user_pars)
 pars_status = {
     'N_sph_in': N_sph_in,
     'blocksize': blocksize,
+    'fs': fs,
     'hopsize': hopsize,
     'numTCs': num_secs,
     'metaDecimate': user_pars['metaDecimate'],
@@ -168,13 +167,13 @@ pars_status = {
 }
 
 
-Path('./audio').mkdir(parents=True, exist_ok=True)
-hoac.write_hoac(pars_status, np.array([doa_idx_stream, dif_q_stream]),
-                x_transport, user_pars, fs, libpath="~/git/opus-tools/")
+hoac.write_hoac(pars_status, doa_idx_stream, dif_q_stream,
+                x_transport, user_pars, hoac_file)
 
 print('Writing output: ', time.time()-start_time, 'seconds.')
-subprocess.run(["du", "-sh", "transport-data/"], check=True)
+print(f'Filesize: {hoac_file.stat().st_size/10e5} MB')
 
+Path('./audio').mkdir(parents=True, exist_ok=True)
 spa.io.save_audio(spa.sph.n3d_to_sn3d(in_sig).T, './audio/in_sig_ambix.wav',
                   fs)
 

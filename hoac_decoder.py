@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jul 14 15:07:27 2023
+HOAC - Higher-Order Ambisonics Audio Compression - Decoder
 
 @author: Chris Hold
 """
+from pathlib import Path
 import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,8 +22,8 @@ PLAY = False
 
 
 # Read
-conf, sig_tc, doa_idx_stream, dif_idx_stream = hoac.read_hoac(
-    libpath="~/git/opus-tools/")
+hoac_file = Path("./out_file.hoac")
+conf, sig_tc, doa_idx_stream, dif_idx_stream = hoac.read_hoac(file=hoac_file)
 
 
 # Prepare
