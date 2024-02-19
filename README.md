@@ -7,11 +7,11 @@ Companion page http://research.spa.aalto.fi/publications/papers/hoac/.
 The encoder extracts a set of transport audio channels and metadata.
 The decoder reconstructs low orders, and resynthesizes high orders from the input parameterization.
 
-The audio transport channel coding uses [Opus](https://github.com/xiph/opus) in discrete channel mode (implemented [here](https://github.com/xiph/opus-tools/pull/80)). It is also possible to use other audio-codecs.
+The audio transport channel coding uses [Opus](https://github.com/xiph/opus) in discrete channel mode (implemented also [here](https://github.com/xiph/opus-tools/pull/80) and [here](https://github.com/xiph/opusfile/pull/45)). It is also possible to use other audio-codecs.
 
 The codec is currently prototyped for 5th order HOA (and higher), at a total bit rate of ~512 kbit/s for 'low', ~768 kbit/s for 'med', and ~1280kbit for 'high' profiles.
 
-Reference implementation for papers
+Reference implementation for papers:
 
 [C. Hold, L. McCormack, A. Politis and V. Pulkki, "Perceptually-Motivated Spatial Audio Codec for Higher-Order Ambisonics Compression", Accepted at IEEE ICASSP, 2024]
 
@@ -40,7 +40,8 @@ pip install spaudiopy
 ```
 For safpy you need to follow the build instructions in its [safpy-README](https://github.com/chris-hld/SAFpy).
 
-Opus can be installed from source [here](https://github.com/xiph/opus), and HOAC uses by default this Python binding [opuslib](https://github.com/chris-hld/opuslib) which can be installed for example with
+Opus can be installed from source [here](https://github.com/xiph/opus), or through most system package managers.
+By default, HOAC uses [these](https://github.com/chris-hld/opuslib) Python bindings which can be installed for example with
 ```
  pip install git+https://github.com/chris-hld/opuslib.git@master
 ```
@@ -79,6 +80,6 @@ azi_s, zen_s, dif_s, ene_s, int_s : np.ndarray
 
 ```
 
-
+---
 Tested against these forks/branches: https://github.com/chris-hld/opus/tree/update_ambi_map3, https://github.com/chris-hld/opusfile/tree/channel-mapping-2-and-3, https://github.com/chris-hld/opus-tools/tree/channels-individual
 
