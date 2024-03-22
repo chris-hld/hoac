@@ -126,6 +126,7 @@ while idx_blk < doa_idx_stream.shape[0]:
 
 out_sig = out_sig[:, hSTFT.processing_delay:]
 print("READY")
+Path('./audio').mkdir(parents=True, exist_ok=True)
 spa.io.save_audio(spa.sph.n3d_to_sn3d(out_sig).T,
                   "./audio/out_hoac_ambix.wav", fs)
 
