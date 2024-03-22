@@ -37,7 +37,7 @@ hoac_file = Path("./out_file.hoac")
 in_file = spa.io.load_audio(in_path, fs)
 assert in_file.fs == fs
 in_sig = in_file.get_signals()[:(N_sph_in+1)**2, :int(fs * sig_len)]
-if 'sn3d' in str(in_path).lower():
+if any(s in str(in_path).lower() for s in ['ambix', 'sn3d']):
     in_sig = spa.sph.sn3d_to_n3d(in_sig)
     print("Converted SN3D input")
 if PEAK_NORM:
