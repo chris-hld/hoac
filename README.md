@@ -13,7 +13,7 @@ The codec is currently prototyped for 5th order HOA (and higher), at a total bit
 
 Reference implementation for papers:
 
-[C. Hold, L. McCormack, A. Politis and V. Pulkki, "Perceptually-Motivated Spatial Audio Codec for Higher-Order Ambisonics Compression", Accepted at IEEE ICASSP, 2024]
+[C. Hold, L. McCormack, A. Politis and V. Pulkki, "Perceptually-Motivated Spatial Audio Codec for Higher-Order Ambisonics Compression", IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP), 2024.]
 
 [C. Hold, L. McCormack, A. Politis and V. Pulkki, "Optimizing Higher-Order Directional Audio Coding with Adaptive Mixing and Energy Matching for Ambisonic Compression and Upmixing," 2023 IEEE Workshop on Applications of Signal Processing to Audio and Acoustics (WASPAA), 2023.]
 
