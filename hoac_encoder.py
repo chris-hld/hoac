@@ -16,7 +16,7 @@ import safpy
 import hoac
 
 
-profile = 'med'  # 'low', 'med', 'high'
+profile = 'high'  # 'low', 'med', 'high'
 
 PEAK_NORM = True
 PLOT = False
@@ -47,7 +47,7 @@ if PEAK_NORM:
 
 
 # defaults
-user_pars = {'bitrate': 48 if profile != 'low' else 32,
+user_pars = {'bitrateTC': 48 if profile != 'low' else 32,
              'numTC': 6 if profile == 'low' else 9 if profile == 'med' else 12,
              'metaDecimateFreqLim': 8 if profile == 'low' else
                                     4 if profile == 'med' else 0,
@@ -77,7 +77,7 @@ if user_pars['numTC'] == 12:
 num_secs = len(sec_dirs[0])
 [A_nm, B_nm] = spa.sph.design_sph_filterbank(
     N_sph_tcs, sec_dirs[0], sec_dirs[1],
-    spa.sph.maxre_modal_weights(N_sph_tcs), 'real', 'perfect')
+    spa.sph.maxre_modal_weights(N_sph_tcs), 'perfect')
 beta = (w / w.sum() * len(w)) * spa.sph.sph_filterbank_reconstruction_factor(
     A_nm[0, :], num_secs, mode='amplitude')
 N_sph_pars = N_sph_tcs + 1
@@ -152,12 +152,13 @@ print(user_pars)
 
 pars_status = {
     'N_sph_in': N_sph_in,
-    'blocksize': blocksize,
     'fs': fs,
-    'hopsize': hopsize,
-    'numTCs': num_secs,
+    'bitrateTC': user_pars['bitrateTC'],
+    'numTC': num_secs,
     'metaDecimate': user_pars['metaDecimate'],
     'metaDecimateFreqLim': user_pars['metaDecimateFreqLim'],
+    'blocksize': blocksize,
+    'hopsize': hopsize,
     'numFreqs': num_fgroups,
     'qgrid': qgrid,
     'qdifbins': qdifbins,
@@ -168,7 +169,7 @@ pars_status = {
 
 
 hoac.write_hoac(pars_status, doa_idx_stream, dif_q_stream,
-                x_transport, user_pars, hoac_file)
+                x_transport, hoac_file)
 
 print('Writing output: ', time.time()-start_time, 'seconds.')
 print(f'Filesize: {hoac_file.stat().st_size/10e5} MB')

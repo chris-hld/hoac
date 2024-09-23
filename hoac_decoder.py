@@ -29,7 +29,7 @@ conf, sig_tc, doa_idx_stream, dif_idx_stream = hoac.read_hoac(file=hoac_file)
 # Prepare
 N_sph_out = conf['N_sph_in']
 num_sh_out = (N_sph_out+1)**2
-r_smooth = 0.75
+r_smooth = 0.9
 
 x_tc = np.sqrt(4*np.pi)*sig_tc.get_signals()
 fs = sig_tc.fs
