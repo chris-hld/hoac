@@ -7,8 +7,6 @@ Companion page http://research.spa.aalto.fi/publications/papers/hoac/.
 The encoder extracts a set of transport audio channels and metadata.
 The decoder reconstructs low orders, and resynthesizes high orders from the input parameterization.
 
-The audio transport channel coding uses [Opus](https://github.com/xiph/opus) in discrete channel mode (implemented also [here](https://github.com/xiph/opus-tools/pull/80) and [here](https://github.com/xiph/opusfile/pull/45)). It is also possible to use other audio-codecs.
-
 The codec is currently prototyped for 5th order HOA (and higher), at a total bit rate of ~512 kbit/s for 'low', ~768 kbit/s for 'med', and ~1280kbit for 'high' profiles.
 
 Reference implementation for papers:
@@ -38,12 +36,13 @@ For spaudiopy, in the conda environment, you can use for example
 ```
 pip install spaudiopy
 ```
-For safpy you need to follow the build instructions in its [safpy-README](https://github.com/chris-hld/SAFpy).
+For [safpy](https://github.com/chris-hld/SAFpy) you need to follow the build instructions in its [safpy-README](https://github.com/chris-hld/SAFpy).
 
+The audio transport channel coding uses [Opus](https://github.com/xiph/opus), it is also possible to use other audio-codecs.
 Opus can be installed from source [here](https://github.com/xiph/opus), or through most system package managers.
-By default, HOAC uses [these](https://github.com/chris-hld/opuslib) Python bindings which can be installed for example with
+By default, HOAC uses [these](https://github.com/chris-hld/pylibopus) Python bindings which can be installed for example with
 ```
- pip install git+https://github.com/chris-hld/opuslib.git@master
+ pip install git+https://github.com/chris-hld/pylibopus.git@master
 ```
 
 If all dependencies are met, an example [encoder](https://github.com/chris-hld/hoac/blob/main/hoac_encoder.py) and [decoder](https://github.com/chris-hld/hoac/blob/main/hoac_decoder.py) shows the basic functionality.
@@ -81,5 +80,4 @@ azi_s, zen_s, dif_s, ene_s, int_s : np.ndarray
 ```
 
 ---
-Tested against these forks/branches: https://github.com/chris-hld/opus/tree/update_ambi_map3, https://github.com/chris-hld/opusfile/tree/channel-mapping-2-and-3, https://github.com/chris-hld/opus-tools/tree/channels-individual
-
+Tested against these forks/branches: https://github.com/chris-hld/opus/tree/update_ambi_map3, https://github.com/chris-hld/opusfile/tree/channel-mapping-2-and-3, https://github.com/chris-hld/opus-tools/tree/channels-individual, and with Opus in discrete channel mode (implemented also [here](https://github.com/xiph/opus-tools/pull/80) and [here](https://github.com/xiph/opusfile/pull/45)).
