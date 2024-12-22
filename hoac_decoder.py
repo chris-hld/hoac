@@ -16,7 +16,7 @@ import safpy
 import hoac
 
 
-SAVE = True
+RENDER = False
 PLOT = False
 PLAY = False
 
@@ -80,7 +80,7 @@ doa_prev = np.zeros_like(doa)
 dif = np.zeros((num_slots, num_ch, num_bands))
 dif_prev = np.zeros_like(dif)
 Y = np.zeros((num_sh_out, num_slots, num_ch, num_bands))
-X_nm = np.zeros((num_slots, num_sh_out, num_bands), dtype=np.complex_)
+X_nm = np.zeros((num_slots, num_sh_out, num_bands), dtype=complex)
 
 M = np.zeros_like(Y)
 M_prev = np.zeros_like(M)
@@ -134,7 +134,7 @@ spa.io.save_audio(spa.sph.n3d_to_sn3d(out_sig).T,
 print('Decoding: ', time.time()-start_time, 'seconds.')
 
 
-if SAVE:
+if RENDER:
     hrirs_nm = spa.decoder.magls_bin(spa.io.load_sofa_hrirs(
         '~/data/HRTFs/THK_KU100/HRIR_L2354.sofa'), N_sph_out)
     out_bin = spa.sig.MultiSignal([*spa.decoder.sh2bin(0.3*out_sig, hrirs_nm)],

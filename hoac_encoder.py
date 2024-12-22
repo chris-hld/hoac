@@ -26,10 +26,11 @@ fs = 48000
 sig_len = 10  # in s
 N_sph_in = 5
 
-file_name = 'Audio/Ambisonics/test_scenes/bruckner_multichannelSH5N3D.wav'
+file_name = 'MachineAer_snip_ambix5.wav'
+# file_name = 'Audio/Ambisonics/test_scenes/bruckner_multichannelSH5N3D.wav'
 # file_name = 'Audio/Ambisonics/test_scenes/em64_testScene_o5_ACN_N3D.wav'
 
-in_path = Path('~/OneDrive - Aalto University') / Path(file_name)
+in_path = Path('./audio') / Path(file_name)
 
 hoac_file = Path("./out_file.hoac")
 

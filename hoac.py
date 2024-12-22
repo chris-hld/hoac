@@ -20,9 +20,9 @@ except ImportError as e:
     warn("SAFPY not available.", ImportWarning)
 
 try:
-    import opuslib
+    import pylibopus
 except ImportError as e:
-    warn("opuslib not available.", ImportWarning)
+    warn("pylibopus not available.", ImportWarning)
 
 
 HOAC_VERSION = '0.1'
@@ -703,8 +703,8 @@ def encode_tcs(tc_sigs, tc_bitrate, fs):
     num_samples = tc_sigs.shape[1]
     assert fs == 48000, "Opus expected 48kHz, please resample."
     mapping = list(range(num_ch))
-    enc = opuslib.MultiStreamEncoder(fs, num_ch, num_ch, 0, mapping,
-                                     opuslib.APPLICATION_AUDIO)
+    enc = pylibopus.MultiStreamEncoder(fs, num_ch, num_ch, 0, mapping,
+                                       pylibopus.APPLICATION_AUDIO)
     enc.bitrate = int(tc_bitrate * 1000 * num_ch)
     enc.complexity = 10
     enc_lookahead = enc.lookahead  # check last
@@ -847,7 +847,7 @@ def read_hoac(file):
     if conf['bitrateTC'] > 0:
         frame_size = 960
         mapping = list(range(num_ch))
-        dec = opuslib.MultiStreamDecoder(fs, num_ch, num_ch, 0, mapping)
+        dec = pylibopus.MultiStreamDecoder(fs, num_ch, num_ch, 0, mapping)
         enc_lookahead = conf['enc_lookahead']
 
         audio_out = np.zeros((frame_size * num_frames + enc_lookahead, num_ch))
