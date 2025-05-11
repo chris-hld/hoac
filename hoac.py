@@ -25,12 +25,299 @@ except ImportError as e:
     warn("pylibopus not available.", ImportWarning)
 
 
-HOAC_VERSION = '0.1'
+HOAC_VERSION = '0.2'
 
 
 def get_version():
     """HOAC version."""
     return HOAC_VERSION
+
+
+class Encoder():
+    """HOAC encoder."""
+    def __init__(self, fs, profile='high'):
+        self.fs = fs
+        self.hopsize = 128
+        self.blocksize = 8 * self.hopsize
+        # defaults
+        self.user_pars = {'bitrateTC': 48 if profile != 'low' else 32,
+                    'numTC': 6 if profile == 'low' else 9 if profile == 'med' else 12,
+                    'metaDecimateFreqLim': 8 if profile == 'low' else
+                                            4 if profile == 'med' else 0,
+                    'metaDecimate': 2,
+                    'metaDoaGridOrder': 38,
+                    'metaDifBins': 8
+                    }
+        self.hSTFT = None
+
+
+    def prepare(self):
+        """Prepare encoder."""
+        if self.user_pars['numTC'] == 6:
+            N_sph_tcs = 2
+            sec_dirs = spa.utils.cart2sph(*spa.grids.load_t_design((N_sph_tcs+1)).T)
+            w = np.ones(len(sec_dirs[0]))
+        if self.user_pars['numTC'] == 9:
+            N_sph_tcs = 3
+            v, w = spa.grids.load_maxDet(N_sph_tcs-1)
+            sec_dirs = spa.utils.cart2sph(*v.T)
+        if self.user_pars['numTC'] == 12:
+            N_sph_tcs = 3
+            sec_dirs = spa.utils.cart2sph(*spa.grids.load_t_design(N_sph_tcs+1).T)
+            w = np.ones(len(sec_dirs[0]))
+        
+        num_secs = len(sec_dirs[0])
+        [A_nm, B_nm] = spa.sph.design_sph_filterbank(
+            N_sph_tcs, sec_dirs[0], sec_dirs[1],
+            spa.sph.maxre_modal_weights(N_sph_tcs), 'perfect')
+        beta = (w / w.sum() * len(w)) * spa.sph.sph_filterbank_reconstruction_factor(
+            A_nm[0, :], num_secs, mode='amplitude')
+        N_sph_pars = N_sph_tcs + 1
+        A_nm_pars = spa.parsa.sh_beamformer_from_pattern('max_re', N_sph_pars-1,
+                                                        sec_dirs[0], sec_dirs[1])
+        A_wxyz_c = np.array(spa.parsa.sh_sector_beamformer(A_nm_pars),
+                            dtype=np.complex64)
+
+        self.hSTFT = safpy.afstft.AfSTFT((N_sph_pars+1)**2, 0, self.hopsize, self.fs)
+        self.hSTFT.clear_buffers()
+        num_slots = self.blocksize // self.hopsize
+
+        f_qt = get_f_quantizer(self.hSTFT.num_bands)
+        num_fgroups = len(f_qt)
+        M_grouper = get_C_weighting(self.hSTFT.center_freqs)[:, None] * \
+            get_f_grouper(f_qt)
+        M_grouper = M_grouper / np.sum(M_grouper, axis=0)
+
+        qgrid, num_coarse = get_quant_grid(self.user_pars['metaDoaGridOrder'], None)
+        qdifbins = np.linspace(0.01, 0.99, self.user_pars['metaDifBins'], False)**1.5
+
+        self.N_sph_tcs = N_sph_tcs
+        self.sec_dirs = sec_dirs
+        self.A_nm = A_nm
+        self.A_wxyz_c = A_wxyz_c
+        self.beta = beta
+        self.M_grouper = M_grouper
+        self.qgrid = qgrid
+        self.qdifbins = qdifbins
+
+
+    def encode(self, in_sig):
+        """Encode."""
+        N_sph_in = int(np.sqrt(in_sig.shape[0]) - 1)
+        N_sph_pars = self.N_sph_tcs + 1
+        x_nm = in_sig[:(N_sph_pars+1)**2, :]
+        x_nm_buf = np.hstack((x_nm, np.zeros((x_nm.shape[0], self.hSTFT.processing_delay))))
+
+        num_slots = self.blocksize // self.hopsize
+        num_secs = len(self.sec_dirs[0])
+        num_fgroups = self.M_grouper.shape[1]
+
+        azi_g = np.zeros((num_slots, num_secs, num_fgroups))
+        zen_g = np.zeros_like(azi_g)
+        dif_g = np.zeros_like(azi_g)
+        ene_g = np.zeros_like(azi_g)
+
+        num_blocks = x_nm_buf.shape[1] // self.blocksize
+        doa_idx_stream = np.zeros((num_blocks, num_slots, num_secs, num_fgroups),
+                                dtype=np.uint16)
+        dif_idx_stream = np.zeros_like(doa_idx_stream, dtype=np.uint8)
+
+        start_smpl = 0
+        idx_blk = 0
+
+        tc_sigs = self.A_nm @ x_nm[:self.A_nm.shape[1], :]
+
+        while idx_blk < num_blocks:
+            blk_in = x_nm_buf[:, range(start_smpl, start_smpl+self.blocksize)]
+
+            # afstft
+            fd_sig_in = self.hSTFT.forward(blk_in)
+
+            for idx_slt in range(num_slots):
+                azi_g[idx_slt, ...], zen_g[idx_slt, ...], \
+                    dif_g[idx_slt, ...], \
+                    ene_g[idx_slt, ...], _ = grouped_sector_parameters(
+                        fd_sig_in[idx_slt, ...], self.A_wxyz_c, self.M_grouper)
+            azi_g, zen_g, dif_g, ene_g = post_pars(azi_g, zen_g, dif_g, ene_g)
+            dif_idx_stream[idx_blk, ...] = quantize_dif(dif_g, self.qdifbins)
+            doa_idx_stream[idx_blk, ...] = quantize_doa(azi_g, zen_g, self.qgrid,
+                                                      dif_g)
+
+            start_smpl += self.blocksize
+            idx_blk += 1
+
+        # downsample side-info
+        doa_idx_stream, dif_idx_stream = downsample_meta(
+            doa_idx_stream, dif_idx_stream, self.user_pars)
+
+        pars_status = {
+            'N_sph_in': N_sph_in,
+            'fs': self.fs,
+            'bitrateTC': self.user_pars['bitrateTC'],
+            'numTC': num_secs,
+            'metaDecimate': self.user_pars['metaDecimate'],
+            'metaDecimateFreqLim': self.user_pars['metaDecimateFreqLim'],
+            'blocksize': self.blocksize,
+            'hopsize': self.hopsize,
+            'numFreqs': num_fgroups,
+            'qgrid': self.qgrid,
+            'qdifbins': self.qdifbins,
+            'A_nm': self.A_nm,
+            'tc_v': self.sec_dirs,
+            'beta': self.beta,
+        }
+        
+        
+        if pars_status['bitrateTC'] > 0:
+            data_tcs, enc_lookahead = encode_tcs(tc_sigs, pars_status['bitrateTC'],
+                                                 pars_status['fs'])
+            pars_status['enc_lookahead'] = enc_lookahead
+        else:
+            data_tcs = 1/(np.sqrt(4*np.pi)) * tc_sigs.T
+            pars_status['enc_lookahead'] = 0
+
+        data_pars_stream = encode_pars(doa_idx_stream, dif_idx_stream)
+
+        return pars_status, data_tcs, data_pars_stream
+
+
+class Decoder():
+    """HOAC decoder."""
+    def __init__(self, fs, N_sph_out, pars_smooth=0.3):
+        self.fs = fs
+        self.N_sph_out = N_sph_out
+        self.pars_smooth = pars_smooth
+        self.hSTFT = None
+
+
+    def prepare(self, conf):
+        """Prepare decoder."""
+        num_sh_out = (self.N_sph_out+1)**2
+        fs = self.fs
+        num_tc = conf['numTC']
+
+        blocksize = conf['blocksize']
+        hopsize = conf['hopsize']
+        num_slots = conf['blocksize'] // conf['hopsize']
+
+        self.hSTFT = safpy.afstft.AfSTFT(num_tc, num_sh_out, hopsize, fs)
+        self.hSTFT.clear_buffers()
+        num_bands = self.hSTFT.num_bands
+        freqs = self.hSTFT.center_freqs
+        f_qt = get_f_quantizer(num_bands)
+        f_qt_c = np.asarray([np.mean(freqs[idx[0]: idx[1]]) for idx in f_qt])
+        qgrid = conf['qgrid']
+        qdifbins = np.append(conf['qdifbins'], 1)
+
+        A_nm = conf['A_nm']
+        beta = conf['beta']
+
+        B_nm, B_nm_trunc, num_recov = sph_filterbank_reconstruction(A_nm)
+        assert num_recov
+
+        B_nm_trunc = B_nm_trunc[:, np.newaxis, :, np.newaxis]
+        B_nm_exp = np.zeros((num_sh_out, num_slots, num_tc, num_bands))
+        B_nm_exp[:B_nm.shape[0], :, :, :] = B_nm[:, np.newaxis, :, np.newaxis]
+        N_sph_recov = int(np.sqrt(num_recov) - 1)
+
+        C_dif = get_cov_dif(self.N_sph_out, num_tc, conf)
+        orne = num_sh_out / np.trace(A_nm.conj().T @ A_nm)
+
+        M_mavg = np.zeros((self.N_sph_out+1, num_sh_out))
+        for n in range(self.N_sph_out+1):
+            M_mavg[n, n**2:(n+1)**2] = 1/(2*n+1)
+        num_m = np.asarray([2*n+1 for n in range(self.N_sph_out+1)])
+
+        self.conf = conf
+        self.blocksize = blocksize
+        self.num_slots = num_slots
+        self.num_tc = num_tc
+        self.qgrid = qgrid
+        self.qdifbins = qdifbins
+        self.f_qt_c = f_qt_c
+        self.B_nm_exp = B_nm_exp
+        self.B_nm_trunc = B_nm_trunc
+        self.beta = beta
+        self.num_recov = num_recov
+        self.C_dif = C_dif
+        self.orne = orne
+        self.M_mavg = M_mavg
+        self.num_m = num_m
+
+    
+    def decode(self, c_data_tcs, c_data_pars):
+        """Decode."""
+        conf = self.conf
+        num_tc = self.num_tc
+        num_bands = self.hSTFT.num_bands
+        num_sh_out = (self.N_sph_out+1)**2
+        blocksize = self.blocksize
+        num_slots = self.num_slots
+        freqs = self.hSTFT.center_freqs
+
+        doa_idx_stream, dif_idx_stream = decode_pars(conf, c_data_pars)
+        num_blocks = doa_idx_stream.shape[0]
+        if conf['bitrateTC'] > 0:
+            tc_sigs = decode_tcs(conf, c_data_tcs)
+        else:
+            tc_sigs = np.sqrt(4*np.pi)*c_data_tcs.T
+
+        tc_sigs = np.hstack((tc_sigs, np.zeros((num_tc, self.hSTFT.processing_delay))))
+        out_sig = np.zeros((num_sh_out, tc_sigs.shape[1]))
+        fd_sig_in = np.zeros((num_slots, num_tc, num_bands), dtype='complex64')
+
+
+        doa = np.zeros((num_slots, num_tc, num_bands, 3))
+        doa_prev = np.zeros_like(doa)
+        dif = np.zeros((num_slots, num_tc, num_bands))
+        dif_prev = np.zeros_like(dif)
+        Y = np.zeros((num_sh_out, num_slots, num_tc, num_bands))
+        X_nm = np.zeros((num_slots, num_sh_out, num_bands), dtype=complex)
+
+        M = np.zeros_like(Y)
+        M_prev = np.zeros_like(M)
+        g = np.ones((self.N_sph_out+1, num_bands))
+
+        start_smpl = 0
+        idx_blk = 0
+        while idx_blk < num_blocks:
+            blk_in = tc_sigs[:, range(start_smpl, start_smpl+blocksize)]
+
+            fd_sig_in[:] = self.hSTFT.forward(blk_in)
+
+            doa[:], dif[:] = dequantize_dirac_pars(doa_idx_stream[idx_blk, ...],
+                                                   dif_idx_stream[idx_blk, ...],
+                                                   freqs, self.f_qt_c,
+                                                   self.qgrid, self.qdifbins,
+                                                   self.pars_smooth)
+
+            M[:], Y[:] = compute_M_Y(doa, dif,
+                                     self.N_sph_out, self.B_nm_exp, self.beta,
+                                     self.num_recov, self.B_nm_trunc)
+
+            if idx_blk == 0:
+                M_prev[:] = M[:]
+            M = (1. - self.pars_smooth) * M + self.pars_smooth * M_prev
+            X_nm[:] = np.einsum('ldsk,dsk->dlk', M, fd_sig_in)
+
+            gn = opt_gain(X_nm, Y, dif,
+                          np.real((fd_sig_in * fd_sig_in.conj())),
+                          self.C_dif, self.orne, self.M_mavg)
+            np.clip(gn, 0.5, 2., out=gn)
+            g = (1. - self.pars_smooth) * gn + self.pars_smooth * g
+
+            X_nm[:, self.num_recov:, :] = np.repeat(g, self.num_m, axis=0)[
+                np.newaxis, self.num_recov:, :] * X_nm[:, self.num_recov:, :]
+
+            # back
+            blk_out = self.hSTFT.backward(X_nm)
+            out_sig[:, range(start_smpl, start_smpl+blocksize)] = blk_out
+            M_prev[:] = M[:]
+            start_smpl += blocksize
+            idx_blk += 1
+
+        out_sig = out_sig[:, self.hSTFT.processing_delay:]
+        return out_sig
 
 
 def cart2sph(x, y, z):
@@ -340,7 +627,7 @@ def quantize_dif(dif, qbins, kernel_size=3, dtype=np.uint8):
     return np.searchsorted(qbins, dif_filtered).astype(dtype)
 
 
-def downsample_meta(doa_idx_stream, dif_q_stream, user_pars):
+def downsample_meta(doa_idx_stream, dif_idx_stream, user_pars):
     """
     Downsample metadata (by zeroing for now).
 
@@ -359,14 +646,14 @@ def downsample_meta(doa_idx_stream, dif_q_stream, user_pars):
     if user_pars['metaDecimate'] >= 1:
         # no information in DC
         doa_idx_stream[:, :, :, 0] = 0
-        dif_q_stream[:, :, :, 0] = user_pars['metaDifBins']
+        dif_idx_stream[:, :, :, 0] = user_pars['metaDifBins']
 
         mask = np.ones_like(doa_idx_stream).astype(np.bool_)
         mask[:, 1::user_pars['metaDecimate'], :,
              :user_pars['metaDecimateFreqLim']] = False
         doa_idx_stream[~mask] = 0
-        dif_q_stream[~mask] = user_pars['metaDifBins']
-    return doa_idx_stream, dif_q_stream
+        dif_idx_stream[~mask] = user_pars['metaDifBins']
+    return doa_idx_stream, dif_idx_stream
 
 
 def dequantize_dirac_pars(doa_idx_stream, dif_idx_stream, freqs, f_qt_c, qgrid,
@@ -417,7 +704,7 @@ def dequantize_dirac_pars(doa_idx_stream, dif_idx_stream, freqs, f_qt_c, qgrid,
     return doa_s, dif_s
 
 
-def formulate_M_Y(doa, dif, N_sph, B_nm_exp, beta, num_recov, B_nm_low):
+def compute_M_Y(doa, dif, N_sph, B_nm_exp, beta, num_recov, B_nm_low):
     """
     Get mixing matrix M and SH expansion Y.
 
@@ -643,14 +930,12 @@ def sph_filterbank_reconstruction(A_nm):
 
 
 # WRITE
-def encode_pars(pars_status, doa_q_stream, dif_q_stream):
+def encode_pars(doa_q_stream, dif_q_stream):
     """
     Write parameter stream.
 
     Parameters
     ----------
-    pars_status : dict
-        DESCRIPTION.
     doa_q_stream : array_like
         DESCRIPTION.
     dif_q_stream : array_like
@@ -664,9 +949,8 @@ def encode_pars(pars_status, doa_q_stream, dif_q_stream):
         DESCRIPTION.
 
     """
-    data_pars_status = pars_status
     data_pars_stream = bz2.compress(np.asarray([doa_q_stream, dif_q_stream]))
-    return data_pars_status, data_pars_stream
+    return data_pars_stream
 
 
 def encode_tcs(tc_sigs, tc_bitrate, fs):
@@ -690,15 +974,6 @@ def encode_tcs(tc_sigs, tc_bitrate, fs):
         DESCRIPTION.
 
     """
-    # spa.io.save_audio(1/(np.sqrt(4*np.pi))*tc_sigs.T,
-    #                   './audio/hoacTCs.wav', fs)
-    # print("Compressing Audio")
-    # libpath = Path(libpath).expanduser()
-    # subprocess.run([libpath/"opusenc",
-    #                 "--bitrate", f"{user_pars['bitrate']*tc_sigs.shape[0]}",
-    #                 "--channels", "discrete",
-    #                 "./audio/hoacTCs.wav",
-    #                 "./transport-data/hoacTCs_enc.hoac"])
     num_ch = tc_sigs.shape[0]
     num_samples = tc_sigs.shape[1]
     assert fs == 48000, "Opus expected 48kHz, please resample."
@@ -731,7 +1006,7 @@ def encode_tcs(tc_sigs, tc_bitrate, fs):
     return opus_data, enc_lookahead
 
 
-def write_hoac(pars_status, doa_q_stream, dif_q_stream, tc_sigs, file):
+def write_hoac(pars_status, data_tcs, data_pars_stream, file):
     """
     Write HOAC file.
 
@@ -739,11 +1014,9 @@ def write_hoac(pars_status, doa_q_stream, dif_q_stream, tc_sigs, file):
     ----------
     pars_status : TYPE
         DESCRIPTION.
-    doa_q_stream : TYPE
+    data_tcs : TYPE
         DESCRIPTION.
-    dif_q_stream : TYPE
-        DESCRIPTION.
-    tc_sigs : TYPE
+    data_pars_stream : TYPE
         DESCRIPTION.
     file : Path
         HOAC file.
@@ -753,31 +1026,10 @@ def write_hoac(pars_status, doa_q_stream, dif_q_stream, tc_sigs, file):
     None.
 
     """
-    # threads = []
-    # threads.append(threading.Thread(target=write_pars,
-    #                                 args=[pars_status, pars_stream]))
-    # threads.append(threading.Thread(target=write_tcs,
-    #                                 args=[tc_sigs, user_pars, fs, libpath]))
-
-    # [t.start() for t in threads]
-    # [t.join() for t in threads]
-
-    if pars_status['bitrateTC'] > 0:
-        data_tcs, enc_lookahead = encode_tcs(tc_sigs, pars_status['bitrateTC'],
-                                             pars_status['fs'])
-        pars_status['enc_lookahead'] = enc_lookahead
-    else:
-        data_tcs = 1/(np.sqrt(4*np.pi)) * tc_sigs
-        pars_status['enc_lookahead'] = 0
-
-    pars_status['hoac_version'] = HOAC_VERSION
-
-    data_pars_status, data_pars_stream = encode_pars(pars_status,
-                                                     doa_q_stream,
-                                                     dif_q_stream)
+    pars_status['hoac_version'] = get_version()
 
     with open(file, "wb") as f:
-        pickle.dump(data_pars_status, f)
+        pickle.dump(pars_status, f)
         pickle.dump(data_pars_stream, f)
         pickle.dump(data_tcs, f)
 
@@ -795,75 +1047,66 @@ def read_hoac(file):
     -------
     conf : TYPE
         DESCRIPTION.
-    sig_tc : TYPE
+    c_data_tcs : TYPE
         DESCRIPTION.
-    doa_idx : TYPE
-        DESCRIPTION.
-    dif_idx : TYPE
+    c_data_pars : TYPE
         DESCRIPTION.
 
     """
-#    with bz2.open("./transport-data/hoac.pars", 'rb') as f_pars:
     with open(file, 'rb') as f_hoac:
-
-        print('Reading Pars')
         conf = pickle.load(f_hoac)
-        c_pars = pickle.load(f_hoac)
-        data_tcs = pickle.load(f_hoac)
+        c_data_pars = pickle.load(f_hoac)
+        c_data_tcs = pickle.load(f_hoac)
 
         assert (conf['hoac_version'] == get_version())
 
-        num_slots = conf['blocksize'] // conf['hopsize']
-        pars = np.reshape(np.frombuffer(bz2.decompress(c_pars),
-                                        dtype=np.int16),
-                          (2, -1, num_slots, conf['numTC'],
-                           conf['numFreqs'])).copy()
+    return conf, c_data_tcs, c_data_pars
 
-        if conf['metaDecimate'] > 1:
-            pars[:, :, :, :, 0] = pars[:, :, :, :, 1]  # no information in DC
-            # pars = np.repeat(pars, conf['metaDecimate'], axis=2)  # upsample
-            pars_f = pars.copy()
-            pars_lo = pars_f[:, :, ::conf['metaDecimate'], :, :conf['metaDecimateFreqLim']]
-            pars_lo = np.repeat(pars_lo, conf['metaDecimate'], axis=2)  # upsample
-            pars = np.concatenate((pars_lo, pars_f[:, :, :, :, conf['metaDecimateFreqLim']:]), axis=-1)
 
-        doa_idx = pars[0, ...]
-        dif_idx = pars[1, ...]
+def decode_pars(conf, c_pars):
+    num_slots = conf['blocksize'] // conf['hopsize']
+    pars = np.reshape(np.frombuffer(bz2.decompress(c_pars),
+                                    dtype=np.int16),
+                        (2, -1, num_slots, conf['numTC'],
+                        conf['numFreqs'])).copy()
 
+    if conf['metaDecimate'] > 1:
+        pars[:, :, :, :, 0] = pars[:, :, :, :, 1]  # no information in DC
+        # pars = np.repeat(pars, conf['metaDecimate'], axis=2)  # upsample
+        pars_f = pars.copy()
+        pars_lo = pars_f[:, :, ::conf['metaDecimate'], :, :conf['metaDecimateFreqLim']]
+        pars_lo = np.repeat(pars_lo, conf['metaDecimate'], axis=2)  # upsample
+        pars = np.concatenate((pars_lo, pars_f[:, :, :, :, conf['metaDecimateFreqLim']:]), axis=-1)
+
+    doa_idx = pars[0, ...]
+    dif_idx = pars[1, ...]
+    return doa_idx, dif_idx
+
+
+def decode_tcs(conf, c_data_tcs):
     print("Decoding Audio")
-    # libpath = Path(libpath).expanduser()
-    # subprocess.run([libpath/"opusdec",
-    #                 "--float",
-    #                 "./transport-data/hoacTCs_enc.hoac",
-    #                 "./audio/hoacTCs_opusdec.wav"])
-
-    # sig_tc = spa.io.load_audio("./audio/hoacTCs_opusdec.wav")
-    num_frames = len(data_tcs)
+    num_frames = len(c_data_tcs)
 
     num_ch = conf['numTC']
     assert (conf['fs'] == 48000)
     fs = conf['fs']
 
-    if conf['bitrateTC'] > 0:
-        frame_size = 960
-        mapping = list(range(num_ch))
-        dec = pylibopus.MultiStreamDecoder(fs, num_ch, num_ch, 0, mapping)
-        enc_lookahead = conf['enc_lookahead']
+    frame_size = 960
+    mapping = list(range(num_ch))
+    dec = pylibopus.MultiStreamDecoder(fs, num_ch, num_ch, 0, mapping)
+    enc_lookahead = conf['enc_lookahead']
 
-        audio_out = np.zeros((frame_size * num_frames + enc_lookahead, num_ch))
-        sample_idx = 0
+    audio_out = np.zeros((frame_size * num_frames + enc_lookahead, num_ch))
+    sample_idx = 0
 
-        for package_idx in range(num_frames):
-            opus_package = data_tcs[package_idx]
-            b_res = dec.decode_float(opus_package, frame_size)
-            res = np.frombuffer(b_res, dtype=np.float32)
+    for package_idx in range(num_frames):
+        opus_package = c_data_tcs[package_idx]
+        b_res = dec.decode_float(opus_package, frame_size)
+        res = np.frombuffer(b_res, dtype=np.float32)
 
-            audio_out[sample_idx:sample_idx+frame_size, :] = res.reshape((frame_size, num_ch))
-            sample_idx += frame_size
-        audio_out = audio_out[enc_lookahead: -frame_size, :]
-
-    else:
-        audio_out = data_tcs.T
-
-    sig_tc = spa.sig.MultiSignal([*audio_out.T], fs=fs)
-    return conf, sig_tc, doa_idx, dif_idx
+        audio_out[sample_idx:sample_idx+frame_size, :] = res.reshape((frame_size, num_ch))
+        sample_idx += frame_size
+    audio_out = audio_out[enc_lookahead: -frame_size, :]
+    
+    audio_out = np.sqrt(4*np.pi)*audio_out.T
+    return audio_out
